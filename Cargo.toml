@@ -1,0 +1,18 @@
+[package]
+name = "sectionizer"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nightfall = { path = "../nightfall" }
+image = "0.23.14"
+img_hash = "3.1.1"
+tokio = { version = "1.5.0", features = ["rt", "macros", "rt-multi-thread"] }
+xtra = { version = "0.5.1", features = ["with-tokio-1"] }
+slog = "2.7.0"
+slog-term = "2.8.0"
+slog-async = "2.6.0"
+futures = "0.3.14"
+bk-tree = "0.3.0"
