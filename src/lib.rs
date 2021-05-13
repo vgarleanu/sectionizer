@@ -71,7 +71,7 @@ pub async fn get_chapters<T: ToString>(
 
     let mut matched_frames = Vec::new();
 
-    const HASH_DIST: u64 = 3;
+    const HASH_DIST: u64 = 5;
     for frame in frame_vec {
         let matches = base_tree.find(&frame, HASH_DIST).collect::<Vec<_>>();
         if let Some(x) = matches.first() {
@@ -90,8 +90,7 @@ pub async fn get_chapters<T: ToString>(
 
             let first = x.first().map(|x| x.0 .1).unwrap_or(0);
 
-            x
-                .iter()
+            x.iter()
                 .map(|x| x.0 .1)
                 .fold((first, 0), |(f, _), x| (f, x))
         })
@@ -101,13 +100,18 @@ pub async fn get_chapters<T: ToString>(
         .collect::<Vec<_>>()
 }
 
+const IMG_H: usize = 16;
+const IMG_W: usize = 18;
+const IMG_SIZE: usize = IMG_H * IMG_W * 3;
+const HASHER: img_hash::HashAlg = img_hash::HashAlg::DoubleGradient;
+
 async fn tree_from_stdout(stdout: ChildStdout) -> BKTree<Frame, Hamming> {
     let mut tree = BKTree::new(Hamming);
-    let mut buf: Box<[u8; 8 * 8 * 3]> = box [0; 8 * 8 * 3];
-    let mut stdout = BufReader::with_capacity(8 * 8 * 3, AllowStdIo::new(stdout));
+    let mut buf: Box<[u8; IMG_SIZE]> = box [0; IMG_SIZE];
+    let mut stdout = BufReader::with_capacity(IMG_SIZE, AllowStdIo::new(stdout));
 
-    let hasher = img_hash::HasherConfig::new()
-        .hash_alg(img_hash::HashAlg::Blockhash)
+    let hasher = img_hash::HasherConfig::with_bytes_type::<[u8; 8]>()
+        .hash_alg(HASHER)
         .to_hasher();
 
     let mut idx = 0;
@@ -115,7 +119,7 @@ async fn tree_from_stdout(stdout: ChildStdout) -> BKTree<Frame, Hamming> {
     while stdout.read_exact(buf.as_mut()).await.is_ok() {
         let raw: &[u8] = buf.as_ref();
 
-        let frame = image::RgbImage::from_raw(8, 8, raw.to_vec()).unwrap();
+        let frame = image::RgbImage::from_raw(IMG_W as u32, IMG_H as u32, raw.to_vec()).unwrap();
 
         let hash = hasher.hash_image(&frame);
         let hash = u64::from_be_bytes(hash.as_bytes().try_into().unwrap());
@@ -130,11 +134,11 @@ async fn tree_from_stdout(stdout: ChildStdout) -> BKTree<Frame, Hamming> {
 
 async fn vec_from_stdout(stdout: ChildStdout) -> Vec<Frame> {
     let mut frames = Vec::with_capacity(240 * 24);
-    let mut buf: Box<[u8; 8 * 8 * 3]> = box [0; 8 * 8 * 3];
-    let mut stdout = BufReader::with_capacity(8 * 8 * 3, AllowStdIo::new(stdout));
+    let mut buf: Box<[u8; IMG_SIZE]> = box [0; IMG_SIZE];
+    let mut stdout = BufReader::with_capacity(IMG_SIZE, AllowStdIo::new(stdout));
 
-    let hasher = img_hash::HasherConfig::new()
-        .hash_alg(img_hash::HashAlg::Blockhash)
+    let hasher = img_hash::HasherConfig::with_bytes_type::<[u8; 8]>()
+        .hash_alg(HASHER)
         .to_hasher();
 
     let mut idx = 0;
@@ -142,7 +146,7 @@ async fn vec_from_stdout(stdout: ChildStdout) -> Vec<Frame> {
     while stdout.read_exact(buf.as_mut()).await.is_ok() {
         let raw: &[u8] = buf.as_ref();
 
-        let frame = image::RgbImage::from_raw(8, 8, raw.to_vec()).unwrap();
+        let frame = image::RgbImage::from_raw(IMG_W as u32, IMG_H as u32, raw.to_vec()).unwrap();
 
         let hash = hasher.hash_image(&frame);
         let hash = u64::from_be_bytes(hash.as_bytes().try_into().unwrap());
