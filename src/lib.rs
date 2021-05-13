@@ -20,10 +20,10 @@ use bk_tree::BKTree;
 use bk_tree::Metric;
 
 /// `0` Frame Hash, `1` frame idx
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Frame(u64, u64);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct MatchedFrames(Frame, Frame);
 
 pub struct Hamming;
@@ -45,9 +45,9 @@ pub async fn get_chapters<T: ToString>(
             StreamType::RawVideo {
                 map: 0,
                 profile: RawVideoProfile::RawRgb,
-                tt: Some(240),
+                tt: Some(300),
             },
-            file1.to_string()
+            file1.to_string(),
         )
         .await
         .unwrap();
@@ -61,9 +61,9 @@ pub async fn get_chapters<T: ToString>(
             StreamType::RawVideo {
                 map: 0,
                 profile: RawVideoProfile::RawRgb,
-                tt: Some(240),
+                tt: Some(300),
             },
-            file2.to_string()
+            file2.to_string(),
         )
         .await
         .unwrap();
@@ -72,7 +72,6 @@ pub async fn get_chapters<T: ToString>(
     let stdout2 = state.take_stdout(stream2.clone()).await.unwrap();
 
     let (base_tree, frame_vec) = join!(tree_from_stdout(stdout1), vec_from_stdout(stdout2));
-    let frame_vec_len = frame_vec.len();
 
     let mut matched_frames = Vec::new();
 
@@ -90,18 +89,20 @@ pub async fn get_chapters<T: ToString>(
 
     matched_frames
         .group_by_mut(|x, y| y.0 .1 - x.0 .1 < 24 * FRAME_DIST_THRESH)
-        .filter_map(|x| {
-            x.iter_mut().reduce(|x, y| {
-                x.1 = y.0;
-                x
-            })
+        .map(|x| {
+            x.sort_by(|a, b| a.0 .1.cmp(&b.0 .1));
+
+            let first = x.first().map(|x| x.0 .1).unwrap_or(0);
+
+            x
+                .iter()
+                .map(|x| x.0 .1)
+                .fold((first, 0), |(f, _), x| (f, x))
         })
         // filter out sections less than 10 seconds in size
-        .filter(|x| x.1 .1 - x.0 .1 > 24 * 10)
-        .map(|x| (x.0.1 / 24, x.1.1 / 24))
+        .map(|x| (x.0 / 24, x.1 / 24))
+        .filter(|x| x.1 - x.0 > 10)
         .collect::<Vec<_>>()
-
-
 }
 
 async fn tree_from_stdout(stdout: ChildStdout) -> BKTree<Frame, Hamming> {
