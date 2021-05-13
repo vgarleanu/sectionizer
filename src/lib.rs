@@ -4,16 +4,12 @@ use nightfall::profile::RawVideoProfile;
 use nightfall::profile::StreamType;
 use nightfall::*;
 
-use slog::o;
-use slog::Drain;
-
 use futures::io::AllowStdIo;
 use futures::io::AsyncReadExt;
 use futures::io::BufReader;
 use futures::join;
 
 use std::convert::TryInto;
-use std::path::Path;
 use std::process::ChildStdout;
 
 use bk_tree::BKTree;
