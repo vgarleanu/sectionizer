@@ -15,6 +15,11 @@ use std::process::ChildStdout;
 use bk_tree::BKTree;
 use bk_tree::Metric;
 
+const IMG_H: usize = 16;
+const IMG_W: usize = 18;
+const IMG_SIZE: usize = IMG_H * IMG_W * 3;
+const HASHER: img_hash::HashAlg = img_hash::HashAlg::DoubleGradient;
+
 /// `0` Frame Hash, `1` frame idx
 #[derive(Clone, Copy, Debug)]
 pub struct Frame(u64, u64);
@@ -71,7 +76,7 @@ pub async fn get_chapters<T: ToString>(
 
     let mut matched_frames = Vec::new();
 
-    const HASH_DIST: u64 = 5;
+    const HASH_DIST: u64 = 4;
     for frame in frame_vec {
         let matches = base_tree.find(&frame, HASH_DIST).collect::<Vec<_>>();
         if let Some(x) = matches.first() {
@@ -99,11 +104,6 @@ pub async fn get_chapters<T: ToString>(
         .filter(|x| x.1 - x.0 > 10)
         .collect::<Vec<_>>()
 }
-
-const IMG_H: usize = 16;
-const IMG_W: usize = 18;
-const IMG_SIZE: usize = IMG_H * IMG_W * 3;
-const HASHER: img_hash::HashAlg = img_hash::HashAlg::DoubleGradient;
 
 async fn tree_from_stdout(stdout: ChildStdout) -> BKTree<Frame, Hamming> {
     let mut tree = BKTree::new(Hamming);
