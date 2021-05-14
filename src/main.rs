@@ -5,7 +5,7 @@ use nightfall::*;
 use slog::o;
 use slog::Drain;
 
-use sectionizer::get_chapters;
+use sectionizer::Sectionizer;
 
 #[tokio::main]
 async fn main() {
@@ -33,11 +33,19 @@ async fn main() {
         logger.clone(),
     );
 
-    let sections = get_chapters(state, logger.clone(), file1, file2).await;
+    let mut sectionizer = Sectionizer::new(logger.clone(), state);
 
-    for group in sections {
-        let start_ts = format!("{:02}:{:02}", group.0 / 60, group.0 % 60);
-        let end_ts = format!("{:02}:{:02}", group.1 / 60, group.1 % 60);
+    let sections = sectionizer.categorize(file1, file2).await.unwrap();
+    log_sections(sections.0, &logger);
+    log_sections(sections.1, &logger);
+}
+
+fn log_sections(sections: sectionizer::Sections, logger: &slog::Logger) {
+    slog::info!(logger, "Sections for {}", sections.target);
+
+    for section in sections.sections {
+        let start_ts = format!("{:02}:{:02}", section.0 / 60, section.0 % 60);
+        let end_ts = format!("{:02}:{:02}", section.1 / 60, section.1 % 60);
         slog::info!(logger, "{} -> {}", start_ts, end_ts);
     }
 }
