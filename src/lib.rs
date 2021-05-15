@@ -47,6 +47,7 @@ impl Metric<Frame> for Hamming {
 }
 
 pub struct Sectionizer {
+    #[allow(dead_code)]
     logger: slog::Logger,
     state: StateManager,
 }

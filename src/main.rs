@@ -16,20 +16,26 @@ async fn main() {
 
     let mut args = std::env::args();
 
-    if args.len() < 3 {
-        slog::error!(logger, "Usage: sectionizer <target> <reference>");
+    if args.len() < 5 {
+        slog::error!(
+            logger,
+            "Usage: sectionizer <path to ffmpeg> <path to tmp> <target> <reference>"
+        );
         return;
     }
 
     let _ = args.next();
+
+    let ffmpeg = args.next().unwrap();
+    let tmp = args.next().unwrap();
 
     let file1 = args.next().unwrap();
     let file2 = args.next().unwrap();
 
     let state = StateManager::new(
         &mut xtra::spawn::Tokio::Global,
-        "/tmp/streaming_cache".into(),
-        "/usr/bin/ffmpeg".into(),
+        tmp.into(),
+        ffmpeg.into(),
         logger.clone(),
     );
 
