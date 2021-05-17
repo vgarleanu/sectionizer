@@ -13,6 +13,7 @@ use futures::join;
 use tokio::io::AsyncReadExt;
 use tokio::process::ChildStdout;
 
+use std::collections::HashMap;
 use std::convert::TryInto;
 
 use bk_tree::BKTree;
@@ -21,8 +22,8 @@ use bk_tree::Metric;
 const IMG_H: usize = 16;
 const IMG_W: usize = 18;
 const IMG_SIZE: usize = IMG_H * IMG_W * 3;
-const HASHER: img_hash::HashAlg = img_hash::HashAlg::DoubleGradient;
-const HASH_MAX_DIST: u64 = 4;
+const HASHER: img_hash::HashAlg = img_hash::HashAlg::Gradient;
+const HASH_MAX_DIST: u64 = 1;
 const FRAME_DIST_THRESH: u64 = 5; // 5 seconds
 
 pub type Result<T> = ::core::result::Result<T, crate::error::SectionizerError>;
@@ -30,7 +31,7 @@ pub type Result<T> = ::core::result::Result<T, crate::error::SectionizerError>;
 /// `0` Frame Hash, `1` frame idx
 #[derive(Clone, Copy, Debug)]
 pub struct Frame {
-    hash: u64,
+    hash: u128,
     idx: u64,
 }
 
@@ -93,8 +94,8 @@ impl Sectionizer {
         let indextree1 = self.tree_from_vec(framevec1.clone());
         let indextree2 = self.tree_from_vec(framevec2.clone());
 
-        let sections1 = self.get_sections(indextree1, framevec2);
-        let sections2 = self.get_sections(indextree2, framevec1);
+        let sections1 = self.get_sections(indextree2, framevec1);
+        let sections2 = self.get_sections(indextree1, framevec2);
 
         Ok((
             Sections {
@@ -112,28 +113,42 @@ impl Sectionizer {
         &self,
         indextree: BKTree<Frame, Hamming>,
         framevec: Vec<Frame>,
-    ) -> Vec<(u64, u64)> {
+    ) -> Vec<(u128, u128)> {
         let mut framevec = framevec
             .into_iter()
-            .filter_map(|x| indextree.find(&x, HASH_MAX_DIST).next().map(|y| (*y.1, x)))
+            .filter_map(|x| indextree.find(&x, HASH_MAX_DIST).next().map(|y| (x, *y.1)))
             .collect::<Vec<_>>();
 
         // sort framevec to avoid overflow
         framevec.sort_by(|x, y| x.0.idx.cmp(&y.0.idx));
 
-        framevec
-            .group_by_mut(|x, y| y.0.idx - x.0.idx < 24 * FRAME_DIST_THRESH)
-            .map(|x| {
-                x.sort_by(|a, b| a.0.idx.cmp(&b.0.idx));
+        let mut groups: HashMap<u64, Vec<Frame>> = HashMap::new();
 
-                let first = x.first().map(|x| x.0.idx).unwrap_or(0);
+        for frame in framevec {
+            // assumes fps is 24
+            let baseframe_idx = frame.0.idx - (frame.0.idx % 24);
+            groups.entry(baseframe_idx / 24).or_default().push(frame.0);
+        }
+
+        let mut groups = groups
+            .into_iter()
+            .filter(|(_, x)| x.len() > 1)
+            .collect::<Vec<_>>();
+
+        groups.sort_by(|a, b| a.0.cmp(&b.0));
+
+        groups
+            .group_by_mut(|(a, _), (b, _)| b - a <= 5)
+            .map(|x| {
+                x.sort_by_key(|(a, _)| *a);
+
+                let first = x.first().map(|(x, _)| *x).unwrap_or(0);
 
                 x.iter()
-                    .map(|x| x.0.idx)
+                    .map(|(x, _)| *x)
                     .fold((first, 0), |(f, _), x| (f, x))
             })
-            .map(|x| (x.0 / 24, x.1 / 24))
-            .filter(|x| x.1 - x.0 > 10)
+            .map(|x| (x.0 as u128, x.1 as u128))
             .collect::<Vec<_>>()
     }
 
@@ -141,8 +156,9 @@ impl Sectionizer {
         let mut frames = Vec::with_capacity(240 * 24);
         let mut buf: Box<[u8; IMG_SIZE]> = box [0; IMG_SIZE];
 
-        let hasher = img_hash::HasherConfig::with_bytes_type::<[u8; 8]>()
+        let hasher = img_hash::HasherConfig::with_bytes_type::<[u8; 16]>()
             .hash_alg(HASHER)
+            .preproc_dct()
             .to_hasher();
 
         let mut idx = 0u64;
@@ -154,7 +170,7 @@ impl Sectionizer {
                 image::RgbImage::from_raw(IMG_W as u32, IMG_H as u32, raw.to_vec()).unwrap();
 
             let hash = hasher.hash_image(&frame);
-            let hash = u64::from_be_bytes(hash.as_bytes().try_into().unwrap());
+            let hash = u128::from_be_bytes(hash.as_bytes().try_into().unwrap());
 
             let frame = Frame { hash, idx };
             frames.push(frame);
@@ -177,5 +193,5 @@ impl Sectionizer {
 
 pub struct Sections {
     pub target: String,
-    pub sections: Vec<(u64, u64)>,
+    pub sections: Vec<(u128, u128)>,
 }
