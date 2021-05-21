@@ -16,15 +16,13 @@ use tokio::process::ChildStdout;
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use bk_tree::BKTree;
-use bk_tree::Metric;
+use bktree::BkTree;
 
 const IMG_H: usize = 16;
 const IMG_W: usize = 18;
 const IMG_SIZE: usize = IMG_H * IMG_W * 3;
-const HASHER: img_hash::HashAlg = img_hash::HashAlg::Gradient;
-const HASH_MAX_DIST: u64 = 1;
-const FRAME_DIST_THRESH: u64 = 5; // 5 seconds
+const HASHER: img_hash::HashAlg = img_hash::HashAlg::DoubleGradient;
+const HASH_MAX_DIST: isize = 2;
 
 pub type Result<T> = ::core::result::Result<T, crate::error::SectionizerError>;
 
@@ -37,15 +35,6 @@ pub struct Frame {
 
 #[derive(Clone, Copy, Debug)]
 pub struct MatchedFrames(Frame, Frame);
-
-/// Metric struct implements `Hamming` distance metric.
-pub struct Hamming;
-
-impl Metric<Frame> for Hamming {
-    fn distance(&self, a: &Frame, b: &Frame) -> u64 {
-        (a.hash ^ b.hash).count_ones() as u64
-    }
-}
 
 pub struct Sectionizer {
     #[allow(dead_code)]
@@ -69,11 +58,15 @@ impl Sectionizer {
         &mut self,
         file1: T,
         file2: T,
+        reverse: bool,
     ) -> Result<(Sections, Sections)> {
+        let sseof = if reverse { Some(300) } else { None };
+
         let profile = StreamType::RawVideo {
             map: 0,
             profile: RawVideoProfile::RawRgb,
             tt: Some(300),
+            sseof,
         };
 
         let stream1 = self.state.create(profile, file1.to_string()).await?;
@@ -109,14 +102,10 @@ impl Sectionizer {
         ))
     }
 
-    fn get_sections(
-        &self,
-        indextree: BKTree<Frame, Hamming>,
-        framevec: Vec<Frame>,
-    ) -> Vec<(u128, u128)> {
+    fn get_sections(&self, indextree: BkTree<Frame>, framevec: Vec<Frame>) -> Vec<(u128, u128)> {
         let mut framevec = framevec
             .into_iter()
-            .filter_map(|x| indextree.find(&x, HASH_MAX_DIST).next().map(|y| (x, *y.1)))
+            .filter_map(|x| indextree.find(x, HASH_MAX_DIST).first().map(|y| (x, *y.0)))
             .collect::<Vec<_>>();
 
         // sort framevec to avoid overflow
@@ -180,12 +169,9 @@ impl Sectionizer {
         frames
     }
 
-    fn tree_from_vec(&self, frames: Vec<Frame>) -> BKTree<Frame, Hamming> {
-        let mut tree = BKTree::new(Hamming);
-
-        for frame in frames {
-            tree.add(frame);
-        }
+    fn tree_from_vec(&self, frames: Vec<Frame>) -> BkTree<Frame> {
+        let mut tree = BkTree::new(hamming);
+        tree.insert_all(frames);
 
         tree
     }
@@ -194,4 +180,8 @@ impl Sectionizer {
 pub struct Sections {
     pub target: String,
     pub sections: Vec<(u128, u128)>,
+}
+
+pub fn hamming(a: &Frame, b: &Frame) -> isize {
+    (a.hash ^ b.hash).count_ones() as isize
 }

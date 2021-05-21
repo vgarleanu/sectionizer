@@ -41,7 +41,7 @@ async fn main() {
 
     let mut sectionizer = Sectionizer::new(logger.clone(), state);
 
-    let sections = sectionizer.categorize(file1, file2).await.unwrap();
+    let sections = sectionizer.categorize(file1, file2, false).await.unwrap();
     log_sections(sections.0, &logger);
     log_sections(sections.1, &logger);
 }
